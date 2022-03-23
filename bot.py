@@ -6,8 +6,12 @@ from discord.ext import commands
 import configparser
 from datetime import datetime, time, timedelta
 import asyncio
+import json
 
 
+###############################################################################
+#                       CONFIGURATION FETCH
+###############################################################################
 def get_config(login):
     config = configparser.ConfigParser()
     with open(login, 'r') as f:
@@ -16,46 +20,83 @@ def get_config(login):
 
 
 config = get_config("login.ini")
-TOKEN = config["appinfo"]["BOT_TOKEN"]
-GUILD = config["guilds"]["testing"]
+TOKEN = config["default"]["BOT_TOKEN"]
+admin_user = config["default"]["admin_user"]
+with open("servers.json", "r") as f:
+    servers = json.load(f)
 
-#Client will handle the discord API functions
-client = discord.Client()
-#bot will handle the bot functions that I want with the discord.ext.commands
+###############################################################################
+#                               Message Prompts
+###############################################################################
+introduction = """Hey! I'm DailyBot, created by Kyle Just. I can do a various amount of tasks but my main one is to fetch random posts from reddit and send them here daily. First things first though,I will need a channel to inhabit and send my messages
+                 in, could you use the "!assign {text channel}" command and I
+                 will use that channel from now on. If not, I could just go
+                 ahead and keep using this one. One more thing, if you want to
+                 know more about what I can do, just use the "!help" command.
+                 Thank you for letting me be a part of your server <3"""
+###############################################################################
+#                               GLOBALS
+###############################################################################
 bot = commands.Bot(command_prefix='!')
-###############################################################################
-#GLOBALS
-###############################################################################
-channel_home = 954808479594450975  # Put channel id that bot will inhabit
-WHEN = time(20, 0, 0)  # 6:00 PM
+WHEN = time(15, 23, 0)  # 6:00 PM
 ###############################################################################
 
 
-@ client.event
-async def on_ready():
-    #Notify user that bot is ready
-    print("{0.user} has connected to Discord!".format(client))
-    #Notify what Guilds it's connected to
-    print("{0.user} is connected to ".format(client)
-          + str(len(client.guilds))
-          + " guilds within Discord: "
-          + str([o.name for o in client.guilds]))
-    client.loop.create_task(background_task())
+@bot.command()
+async def post(ctx):  # Fired every day
+    # Make sure your guild cache is ready so the channel can be found via get_channel
+    await bot.wait_until_ready()
+    # change this to adress dictionary
+    channel = ctx.guild.get_channel(channel_home)
+    print("The one-a-day has been triggered")
+    await channel.send("Booya!")  # REDDIT POST WILL GO HERE
 
 
-@ client.event
-async def on_message(message):
+@bot.command(name="assign")
+async def addChannelHome(ctx, home):
+    # Make sure your guild cache is ready so the channel can be found via get_channel
+    await bot.wait_until_ready()
+    if(home):
+        return
+    print("The test function has been activated")
+
+
+@addChannelHome.error
+async def addChannelHome_error(ctx, error):
+    await ctx.send("There were not enough arguments to assign me to a channel")
     pass
 
 
-@bot.command
-async def post(ctx):  # Fired every day
-    # Make sure your guild cache is ready so the channel can be found via get_channel
-    await client.wait_until_ready()
-    # Note: It's more efficient to do client.get_guild(guild_id).get_channel(channel_home) as there's less looping involved, but just get_channel still works fine
-    channel = client.get_channel(channel_home)
-    print("The one-a-day has been triggered")
-    await channel.send("Booya!")  # REDDIT POST WILL GO HERE
+@bot.command()
+async def shutdown(ctx):
+    if(ctx.author == admin_user):
+        bot.destroy()
+        exit(self)
+
+
+@bot.event
+async def on_ready():
+    #Notify user that bot is ready
+    print("{0.user} has connected to Discord!".format(bot))
+    #Notify what Guilds it's connected to
+    print("{0.user} is connected to ".format(bot)
+          + str(len(bot.guilds))
+          + " guilds within Discord: "
+          + str([o.name for o in bot.guilds]))
+    bot.loop.create_task(background_task())
+    for guild in bot.guilds:
+        if guild.name in servers:
+            pass
+        else:
+            servers[guild.name] = {guild.id: guild.text_channels[0]}
+            await guild.text_channels[0].send(content=introduction)
+
+
+@bot.event
+async def on_disconnect():
+    print("The bot has been disconnected, saving necessary data...")
+    with open("servers.json", "w") as f:
+        json.dump(servers, f)
 
 
 async def background_task():
@@ -84,4 +125,4 @@ async def background_task():
         # Sleep until tomorrow and then the loop will start a new iteration
         await asyncio.sleep(seconds)
 ###############################################################################
-client.run(TOKEN)  # START BOT
+bot.run(TOKEN)  # START BOT
