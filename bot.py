@@ -6,6 +6,7 @@ import configparser
 from datetime import datetime, time, timedelta
 import asyncio
 import json
+import re
 
 
 ###############################################################################
@@ -34,11 +35,14 @@ I will use that channel from now on. If not, I could just go ahead and keep
 using this one. One more thing, if you want to know more about what I can do,
 just use the "!help" command. Thank you for letting me be a part of your server
 <3""".replace("\n", " ")
+home_thank = "Thank you for the new home!"
+channel_dne = "I don't think that channel exists, is it spelled correctly?"
 ###############################################################################
 #                               GLOBALS
 ###############################################################################
 bot = commands.Bot(command_prefix='!')
-WHEN = time(1, 24, 30)  # 6:00 PM
+chillin = discord.CustomActivity(name="Chillin")
+WHEN = time(0, 19, 30)  # 6:00 PM
 ###############################################################################
 
 
@@ -52,6 +56,8 @@ async def on_ready():
           + " guilds within Discord: "
           + str([o.name for o in bot.guilds]))
     bot.loop.create_task(background_task())
+    await bot.change_presence(activity=chillin)
+
     for guild in bot.guilds:
         if str(guild.id) in servers:
             pass
@@ -66,32 +72,46 @@ async def post():  # Fired every day
     # DUPLICATE THE METHOD, ONE FOR REQUESTED POST, THE OTHER FOR DAILY POST
     print("The one-a-day has been triggered")
     for guild in servers:
-        bot.get_guild(int(guild)).get_channel(servers[guild]).send("Booya!")
+        await bot.get_guild(int(guild)).get_channel(servers[guild]).\
+            send("Booya!")
         # REDDIT POST WILL GO HERE
 
 
 @bot.command()
 async def assign(ctx, home):
     await bot.wait_until_ready()
+    if ctx.channel.id != servers[str(ctx.guild.id)]:
+        return
     names = [o.name for o in ctx.guild.text_channels]
-    home = home.replace("#", "")
+    ids = [o.id for o in ctx.guild.text_channels]
+    home = re.sub("#|<|>", "", home)
     if home in names:
         channel = ctx.guild.text_channels[names.index(home)]
         servers[str(ctx.guild.id)] = channel.id
-        await ctx.guild.get_channel(channel.id).\
-            send("Thank you for the new home!")
-    else:
-        await ctx.\
-            send("I don't think that channel exists, is it spelled correctly?")
+        await ctx.guild.get_channel(channel.id).send(home_thank)
+        return
+    try:
+        home = int(home)
+        if home in ids:
+            channel = ctx.guild.get_channel(home)
+            servers[str(ctx.guild.id)] = home
+            await channel.send(home_thank)
+            return
+    except ValueError:
+        pass
+    await ctx.send(channel_dne)
 
 
 @assign.error
 async def assign_error(ctx, error):
-    await ctx.send("There were not enough arguments to assign me to a channel :(")
+    await ctx.\
+        send("There were not enough arguments to assign me to a channel :(")
 
 
 @bot.command(aliases=["sd", "exit"])
 async def shutdown(ctx):
+    if ctx.channel.id != servers[str(ctx.guild.id)]:
+        return
     if(str(ctx.author) == admin_user):
         print("Shutdown signal given...")
         await bot.close()  # STOP BOT
@@ -106,7 +126,6 @@ async def on_disconnect():
 
 async def background_task():
     now = datetime.now()
-    # Make sure loop doesn't start after {WHEN} as then it will send immediately the first time as negative seconds will make the sleep yield instantly
     if now.time() > WHEN:
         tomorrow = datetime.combine(
             now.date() + timedelta(days=1), time(0))
@@ -115,14 +134,13 @@ async def background_task():
         # Sleep until tomorrow and then the loop will start
         await asyncio.sleep(seconds)
     while True:
-        # You can do now() or a specific timezone if that matters, but I'll leave it with utcnow
         now = datetime.now()
         target_time = datetime.combine(
             now.date(), WHEN)  # Sets the time on today
         seconds_until_target = (target_time - now).total_seconds()
         # Sleep until we hit the target time
         await asyncio.sleep(seconds_until_target)
-        await post(None)  # Call the helper function that sends the message
+        await post()  # Call the helper function that sends the message
         tomorrow = datetime.combine(
             now.date() + timedelta(days=1), time(0))
         # Seconds until tomorrow (midnight)
