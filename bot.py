@@ -7,6 +7,7 @@ from datetime import datetime, time, timedelta
 import asyncio
 import json
 import re
+import asyncpraw
 
 
 ###############################################################################
@@ -20,10 +21,23 @@ def get_config(login):
 
 
 config = get_config("login.ini")
-TOKEN = config["default"]["BOT_TOKEN"]
-admin_user = config["default"]["admin_user"]
+
+###DISCORD###
+TOKEN = config["DISCORD"]["bot_token"]
+admin_user = config["DISCORD"]["admin_user"]
+
+###REDDIT###
+reddit = asyncpraw.Reddit(
+    client_id = config["REDDIT"]["client_id"],
+    client_secret = config["REDDIT"]["client_secret"],
+    user_agent = config["REDDIT"]["user_agent"]
+)
+###LOCAL FILES###
 with open("servers.json", "r") as f:
     servers = json.load(f)
+with open("reddit.json", "r") as f:
+    feed = json.load(f)
+feed = {"954653107734851645": ["shitposting", "mildlyinfuriating"]}
 ###############################################################################
 #                               Message Prompts
 ###############################################################################
@@ -41,7 +55,6 @@ channel_dne = "I don't think that channel exists, is it spelled correctly?"
 #                               GLOBALS
 ###############################################################################
 bot = commands.Bot(command_prefix='!')
-chillin = discord.CustomActivity(name="Chillin")
 WHEN = time(0, 19, 30)  # 6:00 PM
 ###############################################################################
 
@@ -55,10 +68,14 @@ async def on_ready():
           + str(len(bot.guilds))
           + " guilds within Discord: "
           + str([o.name for o in bot.guilds]))
+    #Start the clock for the daily post
     bot.loop.create_task(background_task())
-    await bot.change_presence(activity=chillin)
-
+    #Check if any new guilds have been added and send the intro if new
     for guild in bot.guilds:
+        if str(guild.id) in feed:
+            pass
+        else:
+            feed[guild.id] = []
         if str(guild.id) in servers:
             pass
         else:
@@ -78,22 +95,33 @@ async def post():  # Fired every day
 
 
 @bot.command()
+async def add(ctx, new): #Will add a specidic subreddit or user to the selected pool
+    await bot.wait_until_ready()
+    if ctx.channel.id != servers[str(ctx.guild.id)]:
+        return
+    await subject = reddit.subreddit(new)
+    print(subject.display_name)
+    feed[str(ctx.guild.id)].append(subject.id)
+
+
+@bot.command()
 async def assign(ctx, home):
     await bot.wait_until_ready()
     if ctx.channel.id != servers[str(ctx.guild.id)]:
         return
     names = [o.name for o in ctx.guild.text_channels]
-    ids = [o.id for o in ctx.guild.text_channels]
-    home = re.sub("#|<|>", "", home)
     if home in names:
         channel = ctx.guild.text_channels[names.index(home)]
         servers[str(ctx.guild.id)] = channel.id
         await ctx.guild.get_channel(channel.id).send(home_thank)
         return
     try:
+        home = re.sub("#|<|>", "", home)
         home = int(home)
+        ids = [o.id for o in ctx.guild.text_channels]
         if home in ids:
             channel = ctx.guild.get_channel(home)
+            print("{0.user} has been assigned to ".format(bot) + channel.name)
             servers[str(ctx.guild.id)] = home
             await channel.send(home_thank)
             return
@@ -122,6 +150,8 @@ async def on_disconnect():
     print("The bot has been disconnected, saving necessary data...")
     with open("servers.json", "w") as f:
         json.dump(servers, f)
+    with open("reddit.json", "w") as f:
+        json.dump(feed, f)
 
 
 async def background_task():
