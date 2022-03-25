@@ -65,7 +65,7 @@ subreddit_rm_error = "\"{}\" is not a subreddit in the current feed"
 #                               GLOBALS
 ###############################################################################
 bot = commands.Bot(command_prefix='!')
-WHEN = time(0, 19, 30)  # 6:00 PM
+WHEN = time(9, 57, 0)  # 6:00 PM
 ###############################################################################
 
 
@@ -96,16 +96,16 @@ async def on_ready():
 
 async def post():  # Fired every day
     await bot.wait_until_ready()
-    # DUPLICATE THE METHOD, ONE FOR REQUESTED POST, THE OTHER FOR DAILY POST
     print("The one-a-day has been triggered")
     for guild in servers:
+        list = feed[guild]
+        sub = await reddit.subreddit(random.choice(list), fetch=True)
         await bot.get_guild(int(guild)).get_channel(servers[guild]).\
-            send("Booya!")
-        # REDDIT POST WILL GO HERE
+            send(extract(await sub.random()))
 
 
 @bot.command()
-async def add(ctx, new):  # Will add a specidic subreddit or user to the selected pool
+async def add(ctx, new):  #Will add a specidic subreddit or user to the selected pool
     await bot.wait_until_ready()
     if ctx.channel.id != servers[str(ctx.guild.id)]:
         return
@@ -148,9 +148,8 @@ async def randomPost(ctx):
     if ctx.channel.id != servers[str(ctx.guild.id)]:
         return
     list = feed[str(ctx.guild.id)]
-    for i in range(0, 4):
-        sub = await reddit.subreddit(random.choice(list))
-        media = extract(await sub.random())
+    sub = await reddit.subreddit(random.choice(list))
+    media = extract(await sub.random())
 
 
 @bot.command()
@@ -223,6 +222,7 @@ def extract(post):
         match post.post_hint:
             case 'image':
                 print("This is an image: https://www.reddit.com" + post.permalink)
+                return post.url
             case 'hosted:video':
                 print(
                     "This is a video on reddit: https://www.reddit.com" + post.permalink)
@@ -234,6 +234,7 @@ def extract(post):
     except:
         if "https://www.reddit.com" + post.permalink == post.url:
             print("This post is text: https://www.reddit.com" + post.permalink)
+            pprint(vars(post))
         elif (re.search("/www\.reddit\.com/gallery", post.url) != None):
             print("This is a series of images on reddit: https://www.reddit.com" + post.permalink)
         else:
